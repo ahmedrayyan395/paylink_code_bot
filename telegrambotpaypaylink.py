@@ -10,7 +10,10 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Paylink configuration
-paylink = Paylink.test()
+paylink = Paylink.production(
+  api_id='APP_ID_1712565901914',
+  secret_key='1debe73b-3d34-331d-a090-6e8c304309eb'
+)  
 
 # States for the conversation
 PRODUCT_SELECTION, PAYMENT_PROCESSING = range(2)
@@ -24,19 +27,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.clear()
     
     keyboard = [
-        [InlineKeyboardButton("Product  - $19", callback_data='A')],
+        [InlineKeyboardButton("Product avgo Gamma 1min  - $19", callback_data='A')],
         
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    welcome_message_arabic = (
-        "مرحبًا بك في أفضل قناة في السوق! 🌟\n\n"
-        "نحن نقدم محتوى حصري ومعلومات قيمة لا مثيل لها.\n"
-        "انضم إلينا اليوم واستمتع بتجربة فريدة!\n\n"
-        "للاشتراك، يرجى النقر على الزر أدناه لإتمام عملية الدفع:"
+    welcome_message = (
+        "Welcome to the real-time trading bot for top options contracts in *SPX*, *NASDAQ*, and *Gamma*! 🚀\n\n"
+        "Our bot provides live updates on the top 3 *call* and *put* contracts, as well as *NetGex* levels, to help you make smarter trading decisions.\n\n"
+        "What the bot offers:\n"
+        "- Top call and put contracts: Real-time display of the highest-performing contracts.\n"
+        "- NetGex levels: Track key liquidity and market trend levels.\n\n"
+        "Access exclusive trading opportunities and benefit from instant updates to achieve your financial goals!\n\n"
+        "To subscribe, please select one of the options below:"
     )
     
-    await update.message.reply_text(welcome_message_arabic, reply_markup=reply_markup)
+    await update.message.reply_text(welcome_message, reply_markup=reply_markup)
     return PRODUCT_SELECTION
 
 
@@ -74,7 +80,7 @@ async def product_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     product_id = query.data
     if product_id == 'A':
         amount = 19
-        product = PaylinkProduct(title="Product A", price=10, qty=1)
+        product = PaylinkProduct(title="Product avgo Gamma 1min ", price=19, qty=1)
     else:
         amount = 20
         product = PaylinkProduct(title="Product B", price=20, qty=1)
@@ -86,16 +92,16 @@ async def product_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             order_number=f"ORDER_{update.effective_user.id}",
             products=[product],
             callback_url="https://t.me/+7yafeSiz-55kYmJk",  # Replace with your actual callback URL
+            cancel_url="https:www.google.com",
             currency="USD"
         )
         payment_url = invoice_details.url
-        payment_message_arabic = (
-            "🔴 يرجى إكمال عملية الدفع من خلال الرابط أدناه:\n\n"
-            f"{payment_url}\n\n"
-            
-        )
+        payment_message_english = (
+    "🔴 Please complete the payment through the link below:\n\n"
+    f"{payment_url}\n\n"
+)
         
-        await query.edit_message_text(payment_message_arabic)
+        await query.edit_message_text(payment_message_english)
         
         
         transaction_no = invoice_details.transaction_no
@@ -103,9 +109,16 @@ async def product_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         context.user_data['transaction_no'] = transaction_no
         
         # Start the periodic payment check
-        context.job_queue.run_repeating(check_payment_job, interval=30, first=30, 
-                                        data={'chat_id': update.effective_chat.id, 'transaction_no': transaction_no})
-        
+        context.job_queue.run_repeating(
+                    check_payment_job, 
+                    interval=30, 
+                    first=30, 
+                    data={
+                        'chat_id': update.effective_chat.id, 
+                        'transaction_no': transaction_no,
+                        'start_time': datetime.now()
+                    }
+                                       )
         return PAYMENT_PROCESSING
     except Exception as e:
         logger.error(f"Error creating invoice: {str(e)}")
@@ -116,18 +129,19 @@ async def check_payment_job(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
     chat_id = job.data['chat_id']
     transaction_no = job.data['transaction_no']
+    start_time = job.data.get('start_time', datetime.now())
+
     status = paylink.order_status(transaction_no)
     if status.lower() == 'paid':
          # Create keyboard with channel link button
-        keyboard = [[InlineKeyboardButton("الانضمام للقناة", url="https://t.me/+7yafeSiz-55kYmJk")]]
+        keyboard = [[InlineKeyboardButton("Join Channel", url="https://t.me/+7yafeSiz-55kYmJk")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        message = "تمت عملية الدفع بنجاح! انقر على الزر أدناه للانضمام إلى القناة:"
+        message = "Payment successful! ✅\nClick the button below to join our exclusive channel:"
         await context.bot.send_message(
             chat_id=chat_id, 
             text=message,
             reply_markup=reply_markup
         )
-
 
         # Get user information
         user = await context.bot.get_chat_member(chat_id, chat_id)
@@ -185,9 +199,18 @@ async def check_payment_job(context: ContextTypes.DEFAULT_TYPE):
         transaction_chat_map.pop(transaction_no, None)
         job.schedule_removal()
     else:
-        logger.info(f"Payment not yet completed for transaction {transaction_no}. Current status: {status}")
-
-
+         # Check if 2 minutes have passed
+        if (datetime.now() - start_time).total_seconds() > 320:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="Payment failed. Please try again."
+            )
+            # Remove the job after 2 minutes of unsuccessful payment
+            job.schedule_removal()
+            # Remove the transaction from the map
+            transaction_chat_map.pop(transaction_no, None)
+        else:
+            logger.info(f"Payment not yet completed for transaction {transaction_no}. Current status: {status}")
 
 
 async def check_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
