@@ -49,7 +49,7 @@ PRODUCTS = [
     {"name": "mstr Gamma 1min", "price": "19.00", "channel_url": "https://t.me/+BpOTS0RWl8lmMGI0"},
     {"name": "SPY 1min", "price": "19.00", "channel_url": "https://t.me/+dTVSXkZ6vo4wZDY0"},
     {"name": "qqq (1min) gamma", "price": "19.00", "channel_url": "https://t.me/+p6pjdnzWPvhiNWRk"},
-    #{"name": "avgo Theta 1day", "price": "19.00", "channel_url": "https://t.me/+channel8"}
+    {"name": "NDX&SPX", "price": "150.00", "channel_url": "https://t.me/+NvRxO_R62SFiOWRk"}
 ]
 # Global variables
 transaction_chat_map = {}
@@ -89,8 +89,8 @@ def update_user_data(user_id, user_name, payment_date):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.clear()
     keyboard = [
-        [InlineKeyboardButton("Paylink - $19", callback_data='paylink')],
-        [InlineKeyboardButton("PayPal - $19", callback_data='paypal')]
+        [InlineKeyboardButton("Paylink", callback_data='paylink')],
+        [InlineKeyboardButton("PayPal ", callback_data='paypal')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
