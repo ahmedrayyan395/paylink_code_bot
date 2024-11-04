@@ -42,16 +42,19 @@ PAYMENT_SELECTION, PRODUCT_SELECTION = range(2)
 
 # List of Products
 PRODUCTS = [
-    {"name": "avgo Gamma 1min", "price": "19.00"},
-    {"name": "avgo Alpha 1min", "price": "19.00"},
-    {"name": "avgo Beta 5min", "price": "19.00"},
-    {"name": "avgo Delta 15min", "price": "19.00"},
-    {"name": "avgo Epsilon 30min", "price": "19.00"},
-    {"name": "avgo Zeta 1hr", "price": "19.00"},
-    {"name": "avgo Eta 4hr", "price": "19.00"},
-    {"name": "avgo Theta 1day", "price": "19.00"}
+    {"name": "META Gamma 1min", "price": "19.00", "channel_url": "https://t.me/+nyYqvua2iSFlMmE0"},
+    {"name": "TSLA 1min", "price": "19.00", "channel_url": "https://t.me/+itft4dGODUlhN2U0"},
+    {"name": "NVDA 1min", "price": "19.00", "channel_url": "https://t.me/+LDN2vP5j7xA4OWQ0"},
+    {"name": "nflx Gamma 1min", "price": "19.00", "channel_url": "https://t.me/+FuF1dcZNSLszYTk0"},
+    {"name": "mstr Gamma 1min", "price": "19.00", "channel_url": "https://t.me/+BpOTS0RWl8lmMGI0"},
+    {"name": "SPY 1min", "price": "19.00", "channel_url": "https://t.me/+dTVSXkZ6vo4wZDY0"},
+    {"name": "qqq (1min) gamma", "price": "19.00", "channel_url": "https://t.me/+p6pjdnzWPvhiNWRk"},
+    #{"name": "avgo Theta 1day", "price": "19.00", "channel_url": "https://t.me/+channel8"}
 ]
-
+# Global variables
+transaction_chat_map = {}
+payment_to_chat_id = {}
+selected_products = {}  # Add this new dictionary
 # Channel IDs
 INVOICE_CHANNEL_ID = "-1002483849386"
 
@@ -104,8 +107,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(welcome_message, reply_markup=reply_markup, parse_mode='Markdown')
     return PAYMENT_SELECTION
 
-async def send_join_message(context: ContextTypes.DEFAULT_TYPE, chat_id):
-    keyboard = [[InlineKeyboardButton("Join Channel", url="https://t.me/+7yafeSiz-55kYmJk")]]
+async def send_join_message(context: ContextTypes.DEFAULT_TYPE, chat_id, channel_url):
+    keyboard = [[InlineKeyboardButton("Join Channel", url=channel_url)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(
         chat_id=chat_id,
@@ -157,7 +160,6 @@ async def payment_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def product_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-
     callback_data = query.data
     try:
         payment_method, product_index = callback_data.split('_')
@@ -169,7 +171,6 @@ async def product_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     if payment_method == 'paylink':
         product = PaylinkProduct(title=selected_product["name"], price=float(selected_product["price"]), qty=1)
-
         try:
             invoice_details = paylink.add_invoice(
                 amount=float(selected_product["price"]),
@@ -177,24 +178,25 @@ async def product_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 client_name=update.effective_user.full_name,
                 order_number=f"ORDER_{update.effective_user.id}_{int(datetime.timestamp(datetime.now()))}",
                 products=[product],
-                callback_url="https://yourdomain.com/paylink_callback",  # Replace with your actual callback URL
+                callback_url="https://yourdomain.com/paylink_callback",
                 cancel_url="https://www.google.com",
                 currency="USD"
             )
-
             payment_url = invoice_details.url
             payment_message = (
                 "🔴 Please complete the payment through the link below:\n\n"
                 f"{payment_url}\n\n"
                 "You have 3 minutes to complete the payment."
             )
-
             await query.edit_message_text(payment_message)
             transaction_no = invoice_details.transaction_no
+            
+            # Store selected product after we have the transaction_no
+            selected_products[transaction_no] = selected_product
+            
             transaction_chat_map[transaction_no] = update.effective_chat.id
             context.user_data['transaction_no'] = transaction_no
-
-            # Schedule a job to check the payment status every 30 seconds
+            
             context.job_queue.run_repeating(
                 check_paylink_payment_job,
                 interval=30,
@@ -205,9 +207,7 @@ async def product_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     'start_time': datetime.now()
                 }
             )
-
             return ConversationHandler.END
-
         except Exception as e:
             logger.error(f"Error creating invoice: {str(e)}")
             await query.edit_message_text("Sorry, there was an error creating your invoice. Please try again later.")
@@ -215,6 +215,7 @@ async def product_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     elif payment_method == 'paypal':
         selected_product = PRODUCTS[product_index]
+        context.user_data['selected_product'] = selected_product  # Store the selected product
 
         payment = Payment({
             "intent": "sale",
@@ -285,15 +286,29 @@ async def check_paylink_payment_job(context: ContextTypes.DEFAULT_TYPE):
         return
 
     if status.lower() == 'paid':
-        # Create keyboard with channel link button
-        keyboard = [[InlineKeyboardButton("Join Channel", url="https://t.me/+7yafeSiz-55kYmJk")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        message = "✅ Payment successful! Click the button below to join our exclusive channel:"
-        await context.bot.send_message(
-            chat_id=chat_id, 
-            text=message,
-            reply_markup=reply_markup
-        )
+
+        # Get the selected product from the invoice details
+        selected_product = selected_products.get(transaction_no)  # Get from global dictionary
+        
+        if selected_product:
+            # Create keyboard with channel link button
+            keyboard = [[InlineKeyboardButton("Join Channel", url=selected_product["channel_url"])]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            message = "✅ Payment successful! Click the button below to join our exclusive channel:"
+            await context.bot.send_message(
+                chat_id=chat_id, 
+                text=message,
+                reply_markup=reply_markup
+            )
+            
+            # Clean up the stored product data
+            selected_products.pop(transaction_no, None)
+        else:
+            logger.error(f"Unable to determine the selected product for transaction {transaction_no}")
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="Payment successful, but there was an issue retrieving your product details. Please contact support."
+            )
 
         # Get user information
         user = await context.bot.get_chat_member(chat_id, chat_id)
@@ -401,8 +416,14 @@ async def check_paypal_payment_job(context: ContextTypes.DEFAULT_TYPE):
                 # Re-fetch the payment status to confirm execution success
                 payment = Payment.find(payment_id)
                 if payment.state == "approved":
-                    await send_join_message(context, chat_id)
-                    await context.bot.send_message(chat_id=chat_id, text="Payment completed successfully! 🎉 Thank you for your purchase.")
+
+                     # Get the selected product from the payment details
+                    product_name = payment.transactions[0].item_list.items[0].name
+                    selected_product = next((p for p in PRODUCTS if p["name"] == product_name), None)
+    
+                    # Send join message with specific channel URL
+                    await send_join_message(context, chat_id, selected_product["channel_url"])
+                    await context.bot.send_message(chat_id=chat_id, text="🎉 Thank you for your purchase!")
                     await send_invoice_details(context, chat_id, payment)
 
                     # Update user data
@@ -434,15 +455,7 @@ async def check_paypal_payment_job(context: ContextTypes.DEFAULT_TYPE):
             else:
                 logger.info(f"PayPal payment {payment_id} still pending. Status: {payment.state}")
     
-        else:
-            # Payment failed or canceled, notify user
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="❌ Payment was not successful. Please try again."
-            )
-            # Remove the job and payment tracking
-            payment_to_chat_id.pop(payment_id, None)
-            job.schedule_removal()
+       
     
     elif payment.state in ["pending"]:
         # Payment is still pending; check if timeout is reached
