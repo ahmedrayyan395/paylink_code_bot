@@ -55,7 +55,7 @@ async def log_non_members(client):
 
 # Function to run the logging process every minute
 async def periodic_task(client):
-    while True:
+    for i in range(1):
         await log_non_members(client)
         await asyncio.sleep(60)  # Wait for 60 seconds before the next check
 
